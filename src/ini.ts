@@ -1,279 +1,11 @@
 import { v4 } from "uuid";
-import { Config, IPropertyValue, StaticConfig, Value } from "./types";
+import { Config, IPropertyValue, Value } from "./types";
 import { merge } from "lodash";
-
-function determineType(value: string): "string" | "number" | "boolean" {
-  if (value === "true" || value === "false") return "boolean";
-  if (!isNaN(Number(value))) return "number";
-  return "string";
-}
-
-const getType = (value: any): IPropertyValue["type"] => {
-  if (Array.isArray(value)) return "array";
-  return typeof value as IPropertyValue["type"];
-};
-
-function convertToTypedValue(value: string): any {
-  const type = determineType(value);
-  switch (type) {
-    case "boolean":
-      return value === "true";
-    case "number":
-      return Number(value);
-    default:
-      return value;
-  }
-}
-
-type useValidRouteOverload = {
-  (value?: string): boolean;
-  (value?: string[]): boolean;
-};
-
-interface PropertyValueProps {
-  slug: string;
-  value: any;
-  modifier?: IPropertyValue["modifier"];
-  parent?: PropertyCollection | null;
-}
-
-export class PropertyValue {
-  public parent: PropertyCollection | null = null;
-  public type: IPropertyValue["type"] = "undefined";
-  public value: IPropertyValue["value"] = undefined;
-  public modifier: IPropertyValue["modifier"] = null;
-  public slug: IPropertyValue["slug"] = "";
-
-  constructor({ slug, value, modifier, parent }: PropertyValueProps) {
-    this.type = getType(value);
-    this.value = value;
-    this.slug = slug;
-    this.modifier = modifier ?? null;
-    this.parent = parent ?? null;
-  }
-
-  render = (): IPropertyValue["value"] => {
-    switch (this.type) {
-      case "array":
-        return (this.value as Array<PropertyValue>).map((item) =>
-          item.render()
-        );
-      default:
-        return this.value;
-    }
-  };
-
-  stringify = (): string => {
-    switch (this.type) {
-      case "array":
-        return (this.value as Array<PropertyValue>)
-          .map((item) => item.stringify())
-          .join("");
-      default:
-        return `${this.slug}=${this.modifier ?? ""}${String(this.value)}\n`;
-    }
-  };
-
-  set = (slug: string, value: any, typeOverride?: IPropertyValue["type"]) => {
-    const type = typeOverride ?? getType(value);
-    if (type === "array" && Array.isArray(value)) {
-      value = value.map((v) => ({
-        type: getType(v),
-        value: v,
-        modifier: null,
-        slug,
-      }));
-    }
-
-    this.value = {
-      type: type,
-      value: value,
-      modifier: null,
-      slug,
-    };
-
-    return this;
-  };
-
-  drop = () => {
-    if (!this.parent) return;
-    const index = this.parent.value.indexOf(this);
-    this.parent.value.splice(index, 1);
-  };
-}
-
-export class NoopValue extends PropertyValue {
-  constructor(props: PropertyValueProps) {
-    super(props);
-    this.type = props.value.startsWith(";") ? "comment" : "newline";
-    this.value = this.type === "comment" ? `${props.value}\n` : "\n";
-  }
-
-  render = (): IPropertyValue["value"] => this.value;
-
-  stringify = (): string => String(this.value);
-
-  set = (slug: string, value: any) => {
-    this.value = value;
-    return this;
-  };
-}
-
-export const objectToValues = (obj: any) => {
-  const keys = Object.keys(obj);
-  const values = Object.values(obj);
-
-  const value = values.map((item, index) => {
-    const type = getType(item);
-    const slug = keys[index];
-    return new PropertyValue({ slug, value: item, modifier: null });
-  });
-
-  return value;
-};
-
-export class PropertyCollection extends PropertyValue {
-  public value: Value[] = [];
-  constructor(props: PropertyValueProps) {
-    super(props);
-    this.type = "property";
-    this.value = props.value;
-    this.modifier = null;
-  }
-
-  /**
-   * Should return a static object that represents the current state of the config.
-   * This happens by calling the render method on each property in the collection.
-   * The return should contain an object with all the properties in the collection.
-   */
-  render = (): IPropertyValue["value"] => {
-    const entities = this.value.map((item) => ({ [item.slug]: item.render() }));
-    return merge({}, ...entities);
-  };
-
-  stringify = (): string => {
-    let result = `[${this.slug}]\n`;
-    result += this.value.map((item) => item.stringify()).join("");
-    return result.trim() + "\n";
-  };
-
-  set = (slug: string, value: any) => {
-    if (slug === this.slug) {
-      this.value = objectToValues(value).map((item) => {
-        item.parent = this;
-        return item;
-      });
-      return this;
-    }
-
-    const type = getType(value);
-    const exists = !!this.value.find((item) => item.slug === slug);
-
-    if (exists) {
-      const property = this.value.find((item) => item.slug === slug);
-      if (property?.type === "property") {
-        property.set(slug, value, type);
-      }
-    } else {
-      this.value.push(
-        new PropertyValue({ slug, value, modifier: null, parent: this })
-      );
-    }
-
-    return this;
-  };
-
-  query = (keyPath: string): Value[] => {
-    return queryData(this.value, keyPath);
-  };
-}
-
-/**
- * query allows you to fetch deeply nested values from the ini data.
- *
- * For example, if you have a config like this:
- *
- * ```ini
- * [use.remote]
- * nocache=true
- * urls[]=https://pastebin.com/raw/Na2Hmfm8
- * urls[]=https://hue.elk.wtf/palettes/cyberpunk
- * ```
- *
- * You can query for the value of `nocache` like this:
- *
- * ```ts
- * const ini = new Ini(sampleIni);
- * const nocache = ini.query("use.remote.nocache");
- * ```
- *
- * This will return a PropertyValue object that you can use to get the value:
- *
- * ```ts
- * const nocache = ini.query("use.remote.nocache");
- * console.log(nocache.value); // true
- * ```
- *
- * This works by comparing the keyPath to the slug of each property in the config.
- *
- * Note: If there are multiple matches for the keyPath, we should concatenate the values
- * into an array, if they all contain `array` types.
- *
- * Note: collection values can sometimes have a slug that has multiple parts, like `use.remote`.
- *
- * @param keyPath a dot separated path to the value you want to query
- */
-const queryData = (data: Value[], keyPath: string): Value[] => {
-  const matches: Value[] = [];
-
-  const keys = keyPath.split(".");
-
-  // every combination of keys
-  const keyCombinations = keys.map((_, index) =>
-    keys
-      .slice(0, index + 1)
-      .map((key) => key)
-      .join(".")
-  );
-
-  // iterate over each key combination backwards, so we can find the most specific match first
-  for (let i = keyCombinations.length - 1; i >= 0; i--) {
-    const key = keyCombinations[i];
-    const exactMatches = data.filter((item) => item.slug === key);
-    const partialMatches = data.filter((item) =>
-      item.slug.startsWith(key + ".")
-    );
-    const isMostSpecificKeyPath = i === keyCombinations.length - 1;
-
-    for (const match of exactMatches) {
-      if (isMostSpecificKeyPath) {
-        matches.push(match);
-      }
-
-      if (match.type === "property") {
-        const remaining = keyPath.slice(key.length + 1);
-        if (!remaining) continue;
-        const remainingMatches = (match as PropertyCollection).query(remaining);
-        matches.push(...remainingMatches);
-      }
-    }
-
-    for (const match of partialMatches) {
-      if (isMostSpecificKeyPath) {
-        matches.push(match);
-      }
-
-      if (match.type === "property") {
-        const remaining = keyPath.slice(key.length + 1);
-        if (!remaining) continue;
-        const remainingMatches = (match as PropertyCollection).query(remaining);
-        matches.push(...remainingMatches);
-      }
-    }
-  }
-
-  return matches;
-};
+import { queryData } from "./query";
+import { convertToTypedValue } from "./utils";
+import { NoopValue } from "./values/NoopValue";
+import { PropertyCollection } from "./values/PropertyCollection";
+import { PropertyValue } from "./values/PropertyValue";
 
 export class Ini<T> {
   value: Config = [];
@@ -296,7 +28,7 @@ export class Ini<T> {
 
   // should recursively iterate over the entire config and call render on each value
   render = (): T => {
-    const entities = this.value.map((item) => {
+    const entities = this.value.map((item: PropertyCollection) => {
       let entity: any = {};
       const path = item.slug.split(".");
 
@@ -403,18 +135,28 @@ export class Ini<T> {
     return result;
   };
 
+  /**
+   * Returns a single value at a given keyPath.
+   * Throws an error if no exact match is found.
+   */
   expectOne = (keyPath: string): Value => {
     const matches = this.query(keyPath);
     if (matches.length === 0) throw new Error("No exact matches found");
     return matches[0];
   };
 
+  /**
+   * Returns many values at a given keyPath.
+   */
   expectMany = (keyPath: string): Value[] => {
-    const matches = this.query(keyPath);
-    if (matches.length === 0) throw new Error("No exact matches found");
+    const matches = this.query(keyPath) || [];
     return matches;
   };
 
+  /**
+   * Returns N values at a given keyPath.
+   * Throws an error if the number of matches is not equal to N.
+   */
   expectN = (keyPath: string, n: number): Value[] => {
     const matches = this.query(keyPath);
     if (matches.length !== n)

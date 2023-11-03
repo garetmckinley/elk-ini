@@ -1,4 +1,6 @@
-import { NoopValue, PropertyCollection, PropertyValue } from "./ini";
+import { NoopValue } from "./values/NoopValue";
+import { PropertyCollection } from "./values/PropertyCollection";
+import { PropertyValue } from "./values/PropertyValue";
 
 export interface IPropertyValue {
   type:
