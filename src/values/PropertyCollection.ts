@@ -3,14 +3,21 @@ import { Value, IPropertyValue } from "../types";
 import { objectToValues, getType } from "../utils";
 import { PropertyValue, PropertyValueProps } from "./PropertyValue";
 import { queryData } from "../query";
+import { IniRules } from "../rules";
 
 export class PropertyCollection extends PropertyValue {
+  private orphaned = false;
   public value: Value[] = [];
-  constructor(props: PropertyValueProps) {
+  constructor(
+    props: PropertyValueProps & {
+      orphaned?: boolean;
+    }
+  ) {
     super(props);
-    this.type = "property";
+    this.type = "collection";
     this.value = props.value;
     this.modifier = null;
+    this.orphaned = props.orphaned ?? this.orphaned;
   }
 
   /**
@@ -24,7 +31,7 @@ export class PropertyCollection extends PropertyValue {
   };
 
   stringify = (): string => {
-    let result = `[${this.slug}]\n`;
+    let result = this.orphaned ? "" : `[${this.slug}]\n`;
     result += this.value.map((item) => item.stringify()).join("");
     return result.trim() + "\n";
   };
@@ -43,7 +50,7 @@ export class PropertyCollection extends PropertyValue {
 
     if (exists) {
       const property = this.value.find((item) => item.slug === slug);
-      if (property?.type === "property") {
+      if (property?.type === "collection") {
         property.set(slug, value, type);
       }
     } else {
@@ -57,5 +64,45 @@ export class PropertyCollection extends PropertyValue {
 
   query = (keyPath: string): Value[] => {
     return queryData(this.value, keyPath);
+  };
+
+  /**
+   * Sorts the properties in the collection alphabetically.
+   * This function will leave and comments or newlines in place.
+   * // directions are `ascending`, `descending`, and `none`
+   */
+  sort = (direction: IniRules["propertySorting"]) => {
+    if (direction === "none") return this;
+    // availalble indexes are all the indexes that are not comments or newlines
+    const availableIndexes = this.value
+      .map((item, index) => {
+        if (item.type === "comment" || item.type === "newline") return null;
+        return index;
+      })
+      .filter((item) => item !== null) as number[];
+
+    const sortableValues = this.value.filter(
+      (item) => item.type !== "comment" && item.type !== "newline"
+    ) as PropertyValue[];
+
+    // sort the values
+    sortableValues.sort((a, b) => {
+      if (direction === "ascending") {
+        return a.slug.localeCompare(b.slug);
+      } else {
+        return b.slug.localeCompare(a.slug);
+      }
+    });
+
+    // reinsert the values into the collection
+    const newValues: PropertyValue[] = [];
+    for (const index of availableIndexes) {
+      const value = sortableValues.shift();
+      if (value) {
+        newValues[index] = value;
+      }
+    }
+
+    this.value = newValues;
   };
 }

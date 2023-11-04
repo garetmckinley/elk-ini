@@ -183,4 +183,27 @@ newvalue=TEST`)
       },
     });
   });
+
+  it("can assert values", () => {
+    const ini = new Ini(sampleIni);
+
+    expect(ini.assert("hub.HUE_BRIDGE_USER", "USER")).toBe(true);
+    expect(ini.assert("hub.HUE_BRIDGE_USER", "TEST")).toBe(false);
+  });
+
+  it("can assert falsey values", () => {
+    const ini = new Ini(sampleIni);
+
+    expect(ini.assert("hub.HUE_BRIDGE_USER", null)).toBe(false);
+    expect(ini.assert("hub.HUE_BRIDGE_USER", undefined)).toBe(false);
+    expect(ini.assert("hub.HUE_BRIDGE_USER", "")).toBe(false);
+    expect(ini.assert("hub.HUE_BRIDGE_USER", 0)).toBe(false);
+    expect(ini.assert("hub.HUE_BRIDGE_USER", false)).toBe(false);
+
+    expect(ini.assert("hub.HUE_BRIDGE_NONEXISTENT", null)).toBe(true);
+    expect(ini.assert("hub.HUE_BRIDGE_NONEXISTENT", undefined)).toBe(true);
+    expect(ini.assert("hub.HUE_BRIDGE_NONEXISTENT", "")).toBe(false);
+    expect(ini.assert("hub.HUE_BRIDGE_NONEXISTENT", 0)).toBe(false);
+    expect(ini.assert("hub.HUE_BRIDGE_NONEXISTENT", false)).toBe(true);
+  });
 });

@@ -15,7 +15,7 @@ export interface IPropertyValue {
     | "array"
     | "comment"
     | "newline"
-    | "property";
+    | "collection";
   value:
     | string
     | number

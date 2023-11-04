@@ -1,3 +1,4 @@
+import { trim } from "lodash";
 import { IPropertyValue } from "../types";
 import { PropertyValue } from "../values/PropertyValue";
 
@@ -19,6 +20,8 @@ export function convertToTypedValue(value: string): any {
       return value === "true";
     case "number":
       return Number(value);
+    case "string":
+      return value.trim();
     default:
       return value;
   }

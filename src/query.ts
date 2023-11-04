@@ -63,7 +63,7 @@ export const queryData = (data: Value[], keyPath: string): Value[] => {
         matches.push(match);
       }
 
-      if (match.type === "property") {
+      if (match.type === "collection") {
         const remaining = keyPath.slice(key.length + 1);
         if (!remaining) continue;
         const remainingMatches = (match as PropertyCollection).query(remaining);
@@ -76,7 +76,7 @@ export const queryData = (data: Value[], keyPath: string): Value[] => {
         matches.push(match);
       }
 
-      if (match.type === "property") {
+      if (match.type === "collection") {
         const remaining = keyPath.slice(key.length + 1);
         if (!remaining) continue;
         const remainingMatches = (match as PropertyCollection).query(remaining);

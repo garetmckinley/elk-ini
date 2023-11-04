@@ -1,3 +1,4 @@
+import { Ini } from "../ini";
 import { IPropertyValue } from "../types";
 import { getType } from "../utils";
 import { PropertyCollection } from "./PropertyCollection";
@@ -7,6 +8,7 @@ export interface PropertyValueProps {
   value: any;
   modifier?: IPropertyValue["modifier"];
   parent?: PropertyCollection | null;
+  ini?: Ini<any>;
 }
 
 export class PropertyValue {
@@ -15,13 +17,15 @@ export class PropertyValue {
   public value: IPropertyValue["value"] = undefined;
   public modifier: IPropertyValue["modifier"] = null;
   public slug: IPropertyValue["slug"] = "";
+  private ini?: Ini<any>;
 
-  constructor({ slug, value, modifier, parent }: PropertyValueProps) {
+  constructor({ slug, value, modifier, parent, ini }: PropertyValueProps) {
     this.type = getType(value);
     this.value = value;
     this.slug = slug;
     this.modifier = modifier ?? null;
     this.parent = parent ?? null;
+    this.ini = ini;
   }
 
   render = (): IPropertyValue["value"] => {
@@ -42,7 +46,15 @@ export class PropertyValue {
           .map((item) => item.stringify())
           .join("");
       default:
-        return `${this.slug}=${this.modifier ?? ""}${String(this.value)}\n`;
+        const operator = this.ini?.rules.useAssignmentSpacing ? " = " : "=";
+        // return `${this.slug}${operator}${this.modifier ?? ""}${String(this.value)}\n`;
+        return [
+          this.slug,
+          operator,
+          this.modifier ?? "",
+          String(this.value),
+          "\n",
+        ].join("");
     }
   };
 
@@ -57,12 +69,8 @@ export class PropertyValue {
       }));
     }
 
-    this.value = {
-      type: type,
-      value: value,
-      modifier: null,
-      slug,
-    };
+    this.value = value;
+    this.type = type;
 
     return this;
   };
@@ -71,5 +79,9 @@ export class PropertyValue {
     if (!this.parent) return;
     const index = this.parent.value.indexOf(this);
     this.parent.value.splice(index, 1);
+  };
+
+  assert = (value: any): boolean => {
+    return this.value === value;
   };
 }
